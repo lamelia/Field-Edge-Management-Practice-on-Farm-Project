@@ -1,0 +1,477 @@
+
+---
+title: "Field edge management practice survey data"
+date: "October 26, 2015"
+output: pdf_document
+---
+
+**0. MISSING DATA: MULTIPLE IMPUTATION**
+
+
+```{r}
+setwd("e:/Lectures3/488-CL/client")
+ca <- read.csv("data1110.csv")
+library(mice)
+
+#data with all variables included in model
+newca <- ca[c(9:11,24:37,39:51,53,55,57,59,61,66,68,70,90,91,93,96,98:102,105)]
+
+#dataset with main predictors, ca_categorical for categorical/binary variables
+#ca_ordinal for ordinal variables, ca_cont for continuous variables
+ca_categorical <- ca[c(9:11,24:37,39:51,53,55,57,59,61,91,93,96,98:102,105)]
+ca_ordinal <- ca[c(66,68,70)]
+ca_cont <- ca[c(9,90)] #ignore variable hedgerow here, this is to avoid error message due to one variables included only
+
+#factor all categorical/binary variables and order the ordinal variables
+#categorical/binary variables factor
+var_names_cat <- c("hedgerow","wildflower","perennial","X3a","X3b","X3c","X3d", 
+"X3e","X3f","X3g","X3h","X3i","X3j","X3k","X3l","X3m","X3n","X3p","X3q","X3r",
+"X3s","X3t","X3u","X3v","X3w","X3x","X3y","X3z","X3aa","X3ab","UCCE","RCD","NGO","CC",
+"Agencies","A3","A4","A6","A7_owner","A7_technical","A7_bachelor","A7_advanced","A8","A9")
+for (i in 1:44){
+  ca_categorical[,var_names_cat[i]] <- factor(ca_categorical[,var_names_cat[i]])
+}
+
+#factor all ordinal variables
+var_names_ord <- c("X5q","X6q","Q7")
+for (i in 1:3){
+  ca_ordinal[,var_names_ord[i]] <- ordered(ca_ordinal[,var_names_ord[i]])
+}
+
+
+#imputing data
+#categorical/binary: to fasten the process of imputation, we divide dataset into 11 variables
+ca_categorical1 <- ca_categorical[c(1:11)]
+ca_categorical2 <- ca_categorical[c(12:22)]
+ca_categorical3 <- ca_categorical[c(23:33)]
+ca_categorical4 <- ca_categorical[c(34:44)]
+
+#imput cat/binary variables
+imput_ca_categorical1 <- mice(ca_categorical1, me=c(rep("polyreg",11)))
+imput_ca_categorical2 <- mice(ca_categorical2, me=c(rep("polyreg",11)))
+imput_ca_categorical3 <- mice(ca_categorical3, me=c(rep("polyreg",11)))
+imput_ca_categorical4 <- mice(ca_categorical4, me=c(rep("polyreg",5),rep("logreg",4),rep("polyreg",2)))
+
+
+#ordinal
+#lets do imputation without dividing the data
+imput_ca_ordinal <- mice(ca_ordinal,me=c(rep("polr",3)))
+
+#continuous
+#lets just do imputation
+ca_cont$hedgerow <- factor(ca_cont$hedgerow)
+imput_ca_cont <- mice(ca_cont,me=c("polyreg","pmm"))
+
+
+#complete data check
+com_ca_categorical1 <- complete(imput_ca_categorical1,1)
+com_ca_categorical2 <- complete(imput_ca_categorical2,1)
+com_ca_categorical3 <- complete(imput_ca_categorical3,1)
+com_ca_categorical4 <- complete(imput_ca_categorical4,1)
+com_ca_ordinal <- complete(imput_ca_ordinal,1)
+com_ca_cont <- complete(imput_ca_cont,1)
+
+
+#combine all complete data
+combine_all <- cbind(com_ca_categorical1,com_ca_categorical2,com_ca_categorical3,com_ca_categorical4,com_ca_ordinal,com_ca_cont)
+#delete one variable hedgerow 
+ca_complete <- combine_all[c(-48)]
+
+#export ca_complete to xlsx
+library(xlsx)
+write.xlsx(ca_complete, "e:/Lectures3/488-CL/client/ca_complete.xlsx")
+
+#there it goes our final dataset is ca_complete
+#NOTE: age group (A6) and income (A8) are confusing whether nominal or ordinal, the presence of ND messed it up
+
+```
+
+
+**1. DESCRIPTIVE STATISTICS**
+
+*a. Table and Bar*
+
+- Frequency and contingency tables
+
+Table 1. Number (percentage) of farm manager currently, tried, and never used practices on farm edges.
+```{r}
+
+setwd("e:/Lectures3/488-CL/client")
+library(xlsx)
+ca_complete <-  read.xlsx("ca_complete.xlsx",sheetName = "Sheet1")
+
+#############################################################
+#table 1: best reflect opinion on field edge mngt#
+
+dtfr <- data.frame(Practices=c(),Current=c(),Tried=c(),Never=c())
+field_tab1 <- c("hedgerow","wildflower","perennial")
+for (i in 1:3){
+  sum_tab1 <- as.numeric(table(ca_complete[field_tab1[i]]))
+  relative_tab1 <- (as.numeric((table(ca_complete[field_tab1[i]]))/sum(!is.na(ca_complete[field_tab1[i]]))))
+  rel_deci <- sprintf("%.2f",relative_tab1)
+  d <- data.frame(Practice=field_tab1[i],Current=paste(sum_tab1[1],
+  " (", rel_deci[1],")",sep=""),Tried=paste(sum_tab1[2],
+  " (", rel_deci[2],")", sep=""),Never=paste(sum_tab1[3],
+  " (",rel_deci[3],")",sep=""))
+  dtfr <- rbind(dtfr,d)
+}
+print(dtfr)
+
+#te <- sum(!is.na(ca[field_tab1[1]]))
+
+#opinion_tab1 <- rbind(as.numeric(table(ca$mow)), as.numeric(table(ca$burn)))
+#tab1 <- cbind(field_tab1,opinion_tab1)
+```
+
+Table 2. Number (percentage) of farm manager that currently, previously, never, and considering collaboration with partner/collabolator
+```{r}
+#############################################################
+#table2
+#print table agencies 
+dtfr3 <- data.frame(Partner=c(),NeverUsed=c(),Considering=c(),Previously=c(),Currently=c())
+field_tab3 <- c("UCCE","Agencies","RCD","CC","NGO")
+for (i in 1:5){
+  sum_tab3 <- as.numeric(table(factor(ca_complete[[field_tab3[i] ]],level=0:3)))
+  relative_tab3 <- (as.numeric((table(factor
+  (ca_complete[[field_tab3[i] ]],levels=0:3))))/
+  sum(!is.na(ca_complete[field_tab3[i]])))
+  rel_deci3 <- sprintf("%.2f",relative_tab3)
+  d3 <- data.frame(Partner=field_tab3[i],
+  NeverUsed=paste(sum_tab3[1]," (",rel_deci3[1],
+  ")",sep=""),Considering=paste(sum_tab3[2],
+  " (",rel_deci3[2],")",sep=""),Previously=paste(sum_tab3[3],
+  " (" ,rel_deci3[3],")",sep=""),Currently=paste(sum_tab3[4],
+  " (",rel_deci3[4],")",sep=""))
+  dtfr3 <- rbind(dtfr3,d3)
+}
+print(dtfr3)
+```
+
+Table 3. Number of farm (percentage) based on categories of farm size (in acres) 
+
+```{r}
+#############################################################
+#table3
+#size of farm vs interest
+#classify the farm size into some groups based 
+#on categories from USDA National Agricultural
+#Statistics Service (NASS)
+breaks <- c(1,9,19,29,49,99,199,499,999,1999,1280000)
+A2_cut <- cut(ca_complete$A2,breaks,right=FALSE)
+number.farm <- table(A2_cut)
+#relative freq
+percentage <- table(A2_cut)/sum(!is.na(ca_complete$A2))
+comma <- options(digits=1)
+cbind(number.farm,percentage)
+
+#Note: relative freq of quantitative data: http://www.r-tutor.com/elementary-statistics/quantitative-data/
+#relative-frequency-distribution-quantitative-data
+#############################################################
+```
+
+Table 4. Level of interest in field edges practices based on education and skills. 
+NI=Not Interested, SI=Somewhat interested, VI=Very interested
+```{r}
+#############################################################
+#table4
+#print table interest vs edu+skills 
+dtfr4 <- data.frame(Education_Skill=c(),NI=c(),SI=c(),VI=c())
+  sum_tab4 <- table(subset(ca$Q7, ca$A7_technical == 1 & ca$A7_bachelor == 0 & ca$A7_advanced == 0) )
+  sum_tab5 <- table(subset(ca$Q7, ca$A7_technical == 0 & ca$A7_bachelor == 1 & ca$A7_advanced == 0) )
+  sum_tab6 <- table(subset(ca$Q7, ca$A7_technical == 0 & ca$A7_bachelor == 0 & ca$A7_advanced == 1) )
+  sum_tab7 <- table(subset(ca$Q7, ca$A7_technical == 1 & ca$A7_bachelor == 1 & ca$A7_advanced == 0) )
+  sum_tab8 <- table(subset(ca$Q7, ca$A7_technical == 1 & ca$A7_bachelor == 0 & ca$A7_advanced == 1) )
+  
+  d4 <- data.frame(Education_Skill="Technical",NI=paste(sum_tab4[2]),
+  SI=paste(sum_tab4[3]),VI=paste(sum_tab4[4]))
+  d5 <- data.frame(Education_Skill="Bachelor",NI=paste(sum_tab5[2]),
+  SI=paste(sum_tab5[3]),VI=paste(sum_tab5[4]))
+  d6 <- data.frame(Education_Skill="Advanced",NI=paste(sum_tab6[2]),
+  SI=paste(sum_tab6[3]),VI=paste(sum_tab6[4]))
+  d7 <- data.frame(Education_Skill="Technical+Bachelor",NI=paste(sum_tab7[2]),
+  SI=paste(sum_tab7[3]),VI=paste(sum_tab7[4]))
+  d8 <- data.frame(Education_Skill="Technical+Advanced",NI=paste(sum_tab8[2]),
+  SI=paste(sum_tab8[3]),VI=paste(sum_tab8[4]))
+  
+  dtfr4 <- rbind(dtfr4,d4,d5,d6,d7,d8)
+print(dtfr4)
+
+#############################################################
+```
+
+Table 5(a). Number of farm manager that NI(Not interested), SI(Somewhat interested),
+and VI(Very interested) to field edge practices based on age groups
+```{r}
+#############################################################
+
+#age vs interest
+
+#before that, lets fill the missing value in A6_new &
+#Q7 with NA, so this wont confuse with "" or " " category
+
+ca$A6_new[ ca$A6_new == ""  ] = NA
+ca$Q7[ ca$Q7 == ""  ] = NA
+
+ca$Q7 <- factor(ca$Q7)
+ca$A6_new <- factor(ca$A6_new)
+levels(ca$Q7) 
+agi <- table(ca$A6_new,ca$Q7)
+rownames(agi) 
+addmargins(agi) #addmargins to adding row and col sums
+```
+
+Table 5(b). Percentage of farm manager that NI(Not interested), SI(Somewhat interested),
+and VI(Very interested) to field edge practices based on age groups (percentage is per column of level of interest)
+
+```{r}
+prop.table(agi,2) # percentages per column
+#note: contingency tables manipulation: #http://cnx.org/contents/d846ad27-dc3e-4a2e-9d90-90dc48688fc7@14.2:27
+#############################################################
+```
+
+Table 6a. Number farm manager that NI(Not interested), SI(Somewhat interested),
+and VI(Very interested) to field edge practices based on gender
+```{r}
+#fill the missing value in A9 with NA, so this wont confuse with "" or " " category
+ca$A9[ ca$A9 == ""  ] = NA #after labeling NA do
+#not forget to run factor(ca$) so this can eliminate the "" or " "
+
+#gender vs interest
+ca$A9 <- factor(ca$A9)
+ca$Q7 <- factor(ca$Q7)
+
+levels(ca$A9)  
+gei <- table(ca$A9,ca$Q7)
+rownames(gei) 
+addmargins(gei)
+
+#############################################################
+```
+
+Table 6b. Percentage of farm manager that NI(Not interested), SI(Somewhat interested),
+and VI(Very interested) to field edge practices based on gender (percentage is per column of level of interest)
+```{r}
+prop.table(gei,2) # percentages per column
+```
+
+Table 7a. Number farm manager that NI(Not interested), SI(Somewhat interested),
+and VI(Very interested) to field edge practices based on income
+```{r}
+#fill the missing value in A8_new with NA, so this wont confuse with "" or " " category
+ca$A8_new[ ca$A8_new == ""  ] = NA
+
+#income vs interest
+ca$A8_new <- factor(ca$A8_new)
+levels(ca$A8_new) 
+ini <- table(ca$A8_new,ca$Q7)
+rownames(ini) 
+addmargins(ini)
+```
+
+Table 7b. Percentage of farm manager that NI(Not interested), SI(Somewhat interested),
+and VI(Very interested) to field edge practices based on income (percentage is per column)
+
+```{r}
+prop.table(ini,2) # percentages per column
+```
+
+Table 8a. Number farm manager that NI(Not interested), SI(Somewhat interested),
+and VI(Very interested) to field edge practices based on familiarity with program that offer financial and technical support to incorporate field edge plantings
+```{r}
+#fill the missing value in X6q with NA, so this wont confuse with "" or " " category
+ca$X6q[ ca$X6q == ""  ] = NA
+
+#familiarity vs interest 
+ca$X6q <- factor(ca$X6q)
+
+levels(ca$X6q)
+fi <- table(ca$X6q,ca$Q7)
+rownames(fi) 
+addmargins(fi)
+```
+
+Table 8b. Percentage of farm manager that NI(Not interested), SI(Somewhat interested),
+and VI(Very interested) to field edge practices based on familiarity with program that offer financial and technical support to incorporate field edge plantings (percentage per column)
+
+```{r}
+prop.table(fi,2) # percentages per column
+```
+
+Table 9a.Number of farm manager that NI(Not interested), SI(Somewhat interested),
+and VI(Very interested) to field edge practices based on actual application of the practice
+
+```{r}
+#fill the missing value in Q7 with NA, so this wont confuse with "" or " " category
+ca$Q7[ ca$Q7 == ""  ] = NA
+
+ca$Q7 <- factor(ca$Q7)
+levels(ca$Q7)
+Q7hrow <- table(ca$hedgerow,ca$Q7)
+rownames(Q7hrow) <- c("never","tried","currently")
+addmargins(Q7hrow)
+```
+
+Table 9b.Percentage of farm manager that NI(Not interested), SI(Somewhat interested),
+and VI(Very interested) to field edge practices based on actual application of the practice (percentage per column)
+
+```{r}
+prop.table(Q7hrow,2) # percentages per column
+```
+
+- Bar charts/Visualization
+
+*b. Calculate missing data in every column*
+
+- Calculate NA 
+
+- Calculate null 
+
+```{r}
+#colSums(is.na(ca))
+```
+
+*c. Testing for contingency table (chi-square, fisher)*
+
+Conduct chi-square test and Fisher test (without missing data/null/NA) at 0.05 significance level.
+
+- Chi square test below yield warning message related to expected value less than 5:
+
+
+```{r}
+library(MASS)  
+chisq.test(agi) #Test hypothesis whether interest levels is independent with age group (Table 5a)
+chisq.test(ini) #Test hypothesis whether interest levels is independent with income group (Table 7a)
+chisq.test(gei) #Test hypothesis whether interest levels is independent with gender (Table 6a)
+chisq.test(Q7hrow) #Test hypothesis whether interest levels is independent with actual application (Table 9a)
+
+#Note: warning from chi-square test, alternative solution: 
+#1. http://ww2.coastal.edu/kingw/statistics/R-tutorials/independ.html
+#2. downsizing groups of variable
+```
+
+- Chi square test below yield no warning message:
+
+```{r}
+chisq.test(fi) #Test hypothesis whether interest levels is 
+#independent with familiarity with program and financial support (Table 8a)
+
+```
+
+**2. MODEL BUILDING**
+
+Applying logistic regression to estimate the probability of people who plant hedgerows, wildflowers, and native perennial grass.
+
+```{r}
+####################################################################
+#predictor variables
+
+#non demographic predictor variables
+#1. benefit,calculate number of more benefit or high benefit divided by the number of all variables associated with benefit in every rows. the calculation yield one value for every records/rows, we call this as new variable as benefit
+comma <- options(digits=1) #2 digit 
+benefit <- (rowSums(ca_complete[,5:18] ==3 | ca_complete[,5:18] ==2, na.rm=T))/ncol(ca_complete[,5:18])
+#divide outcome, use (=1) and not use the practice (=0). 
+
+#2.concern, calculate number of more concern or high concern divided by the number of all variables associated with concern in every rows. the calculation yield one value for every records/rows, we call this as new variable as concern
+comma <- options(digits=1) #2 digit 
+concern <- (rowSums(ca_complete[,19:31] ==3 | ca_complete[,19:31] ==2, na.rm=T))/ncol(ca_complete[,19:31])
+
+#3a.partnership, have partner(=1) are currently and previously, otherwise have no partner(=0)
+new_UCCE <- as.numeric(ca_complete$UCCE==2 | ca_complete$UCCE==3)
+new_RCD <- as.numeric(ca_complete$RCD==2 | ca_complete$RCD==3)
+new_NGO <- as.numeric(ca_complete$NGO==2 | ca_complete$NGO==3)
+new_CC <- as.numeric(ca_complete$CC==2 | ca_complete$CC==3)
+new_Agencies <- as.numeric(ca_complete$Agencies==2 | ca_complete$Agencies==3)
+
+
+#3b.partnership, have partner(=1) is currently, otherwise have no partner(=0)
+
+#1. current use is classified as use (=1), tried and never use are classified as not use (=0).
+use1_h <- as.numeric(ca_complete$hedgerow==2) #hedgerow
+use1_f <- as.numeric(ca_complete$wildflower==2) #wildflower
+use1_g <- as.numeric(ca_complete$perennial==2) #perennial
+
+#2. current use and never use are classified as use (=1), and never use is classified as not use (=0).
+use2_h <- as.numeric(!(ca$hedgerow==0))
+
+#3. tried/discontinued classified as use in past (=1), and never use
+#and currently used as not use in the past(=0) 
+tried <- as.numeric(ca$hedgerow==1)
+
+#create new table included use1_h and other predictors
+caNew <- cbind(use1_h,new_UCCE,new_RCD,new_NGO,new_CC,new_Agencies,concern,benefit,ca_complete,use1_f,use1_g)
+caNew_2 <- caNew[c(-9,-13:-44)]
+
+#export caNew_2 to xlsx
+library(xlsx)
+write.xlsx(caNew_2, "e:/Lectures3/488-CL/client/caNew_2.xlsx")
+
+####################################################################
+```
+
+a. Model 1 (current use as use(=1), others as not use(=0))
+
+```{r}
+####################################################################
+#Variables in the model:
+
+#Below is demographic variables:
+#A2 -> farm size, continuous
+#A3 -> ownership of farm, discrete char
+#A4_new -> conventional/organic/both, discrete char
+#A6_new -> age, discrete numeric
+#A7_owner-A7_advanced -> skill/edu, discrete numeric
+#A8_new -> income, discrete numeric
+#A9 -> gender, discrete char
+####################################################################
+#Logistic regression to estimate probability of people plant hedgerows (shrubs, trees, grasses)
+
+# caNew_2$new_UCCE <- factor(caNew_2$new_UCCE)
+# caNew_2$new_RCD <- factor(caNew_2$new_RCD)
+# caNew_2$new_NGO <- factor(caNew_2$new_NGO)
+# caNew_2$new_CC <- factor(caNew_2$new_CC)
+# caNew_2$new_Agencies <- factor(caNew_2$new_Agencies)
+# caNew_2$X5q <- ordered(caNew_2$X5q)
+# caNew_2$X6q <- ordered(caNew_2$X6q)
+# caNew_2$Q7 <- ordered(caNew_2$Q7)
+# caNew_2$A3 <- factor(caNew_2$A3)
+# caNew_2$A4 <- factor(caNew_2$A4)
+# caNew_2$A6 <- factor(caNew_2$A6)
+# caNew_2$A7_owner <- factor(caNew_2$A7_owner)
+# caNew_2$A7_technical <- factor(caNew_2$A7_technical)
+# caNew_2$A7_bachelor <- factor(caNew_2$A7_bachelor)
+# caNew_2$A7_advanced <- factor(caNew_2$A7_advanced)
+# caNew_2$A8 <- factor(caNew_2$A8)
+# caNew_2$A9 <- factor(caNew_2$A9)
+# caNew_2$A2 <- as.numeric(caNew_2$A2)
+
+
+str(caNew_2)
+#Multiple logistic regression with demographic predictors
+summary(lm.h <- glm(use1_h~benefit+concern+new_UCCE+new_RCD+new_NGO+new_CC+new_Agencies+X5q+X6q+Q7+A2+A3+A4+A6+A7_owner+A7_technical+A7_bachelor+A7_advanced+A8+A9,caNew_2,family=binomial))
+
+#stepwise variable selection
+library(MASS)
+stepw <- stepAIC(lm.h, direction = "both")
+summary(stepw)
+
+#ordered x5q, x6q, Q7
+caNew_2$X5q <- ordered(caNew_2$X5q)
+caNew_2$X6q <- ordered(caNew_2$X6q)
+caNew_2$Q7 <- ordered(caNew_2$Q7)
+
+summary(lm.ho <- glm(use1_h~benefit+concern+new_UCCE+new_RCD+new_NGO+new_CC+new_Agencies+X5q+X6q+Q7+A2+A3+A4+A6+A7_owner+A7_technical+A7_bachelor+A7_advanced+A8+A9,caNew_2,family=binomial))
+
+#stepwise variable selection
+library(MASS)
+stepw <- stepAIC(lm.h, direction = "both")
+summary(stepw)
+
+```
+
+
+- Logistic regression to estimate probability of people plant wildflowers (forbs)
+
+- Logistic regression to estimate probability of people plant native perennial grasses
+
+2. Assumptions checking
+
